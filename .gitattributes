@@ -1,0 +1,10 @@
+# 统一换行符，避免 Windows/Linux 混用导致 diff 噪音
+* text=auto
+
+# 批处理脚本统一 CRLF
+*.bat text eol=crlf
+
+# 源码与文档统一 LF
+*.py  text eol=lf
+*.md  text eol=lf
+*.json text eol=lf

@@ -1,0 +1,34 @@
+{
+  "_说明": "本文件为配置示例（带字段说明）。实际运行时请编辑 config/config.json，不要把本示例直接改名为 config.json。",
+  "network": {
+    "_说明": "网络相关参数",
+    "ssid": "JXUAS",
+    "ssid_backup": "JXUAS-2.4G",
+    "portal_url": "http://172.16.20.18/",
+    "self_service_url": "http://172.16.20.19:8080/selfservice/",
+    "test_url": "https://www.baidu.com/"
+  },
+  "account": {
+    "_说明": "用户名=学号；初始密码=身份证后6位（首次登录需改密）；接入选项默认校园网学生接入。宽带账号/密码为运营商绑定预留字段，绑定需在自助平台手动完成。",
+    "username": "",
+    "password": "",
+    "access_option": "校园网学生接入",
+    "broadband_account": "",
+    "broadband_password": ""
+  },
+  "browser": {
+    "_说明": "driver_path 留空则自动下载/匹配与 Edge 版本对应的 msedgedriver；headless=true 时后台运行不弹窗。",
+    "driver_path": "",
+    "headless": false,
+    "timeout": 30
+  },
+  "auto_login": {
+    "_说明": "check_interval 为常驻模式检测间隔（秒）；max_retry 为认证失败重试次数。",
+    "check_interval": 30,
+    "max_retry": 3
+  },
+  "logging": {
+    "level": "INFO",
+    "log_dir": "logs"
+  }
+}

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 打包产物
+build/
+dist/
+*.spec
+
+# 日志
+logs/
+*.log
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 注意：config/config.json 会被提交（占位空账号），
+# 请勿把包含真实密码的配置提交到公开仓库。
