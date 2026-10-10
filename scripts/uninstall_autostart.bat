@@ -12,9 +12,15 @@ echo.
 if exist "dist\jxuas-autologin.exe" (
     "dist\jxuas-autologin.exe" --uninstall-autostart
 ) else (
-    python "src\main.py" --uninstall-autostart
+    if exist ".venv\Scripts\python.exe" (
+        ".venv\Scripts\python.exe" "src\main.py" --uninstall-autostart
+    ) else (
+        python "src\main.py" --uninstall-autostart
+    )
 )
+set "RUN_RESULT=%errorlevel%"
 
 echo.
 echo 完成。按任意键退出...
 pause >nul
+exit /b %RUN_RESULT%

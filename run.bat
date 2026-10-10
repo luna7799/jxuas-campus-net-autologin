@@ -11,9 +11,15 @@ echo.
 if exist "dist\jxuas-autologin.exe" (
     "dist\jxuas-autologin.exe" %*
 ) else (
-    python "src\main.py" %*
+    if exist ".venv\Scripts\python.exe" (
+        ".venv\Scripts\python.exe" "src\main.py" %*
+    ) else (
+        python "src\main.py" %*
+    )
 )
+set "RUN_RESULT=%errorlevel%"
 
 echo.
 echo 程序已结束，按任意键退出...
 pause >nul
+exit /b %RUN_RESULT%

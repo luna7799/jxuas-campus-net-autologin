@@ -20,5 +20,6 @@ Thumbs.db
 .idea/
 .vscode/
 
-# 注意：config/config.json 会被提交（占位空账号），
-# 请勿把包含真实密码的配置提交到公开仓库。
+# 个人配置只保存在本机；仓库仅保留空账号示例。
+/config/*.json
+!/config/config.example.json

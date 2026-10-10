@@ -12,6 +12,8 @@ import copy
 import json
 import os
 import sys
+import tempfile
+from urllib.parse import urlsplit
 
 
 # 默认配置：即 config/config.json 的「模板」。新增字段只需在此补充，
@@ -26,6 +28,8 @@ DEFAULT_CONFIG = {
         "self_service_url": "http://172.16.20.19:8080/selfservice/",
         # 用于判断是否已联网的测试地址
         "test_url": "https://www.baidu.com/",
+        "connect_timeout": 15,
+        "auth_timeout": 15,
     },
     "account": {
         # 用户名：学号；初始密码为身份证后 6 位（首次登录需改密）
@@ -50,6 +54,8 @@ DEFAULT_CONFIG = {
         "check_interval": 30,
         # 认证失败后的最大重试次数
         "max_retry": 3,
+        "retry_delay": 5,
+        "max_backoff": 300,
     },
     "logging": {
         # 日志级别：DEBUG / INFO / WARNING / ERROR
@@ -77,6 +83,46 @@ def get_config_path():
     return os.path.join(get_base_dir(), "config", "config.json")
 
 
+class ConfigError(ValueError):
+    """配置无法读取或字段不合法；不使用空账号默默继续运行。"""
+
+
+def resolve_path(path=None):
+    return os.path.abspath(os.path.expanduser(path or get_config_path()))
+
+
+def validate_config(config):
+    """校验已合并配置的类型和范围，错误只报告字段名，不输出密码。"""
+    if not isinstance(config, dict):
+        raise ConfigError("配置文件最外层必须是 JSON 对象。")
+    for section, defaults in DEFAULT_CONFIG.items():
+        values = config.get(section)
+        if not isinstance(values, dict):
+            raise ConfigError("%s 必须是 JSON 对象。" % section)
+        for key, default in defaults.items():
+            value = values.get(key)
+            if type(value) is not type(default):
+                raise ConfigError("%s.%s 类型不正确。" % (section, key))
+            if isinstance(default, int) and not isinstance(default, bool) and value <= 0:
+                raise ConfigError("%s.%s 必须是正整数。" % (section, key))
+    for key in ("portal_url", "test_url", "self_service_url"):
+        try:
+            parsed = urlsplit(config["network"][key])
+            if parsed.scheme not in ("http", "https") or not parsed.hostname:
+                raise ValueError()
+            if parsed.port is not None and not 1 <= parsed.port <= 65535:
+                raise ValueError()
+        except ValueError:
+            raise ConfigError("network.%s 必须是有效的 HTTP/HTTPS 地址。" % key) from None
+    if config["logging"]["level"].upper() not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+        raise ConfigError("logging.level 不是有效的日志级别。")
+    if not config["logging"]["log_dir"].strip():
+        raise ConfigError("logging.log_dir 不能为空。")
+    if not config["account"]["access_option"].strip():
+        raise ConfigError("account.access_option 不能为空。")
+    return config
+
+
 def _deep_merge(base, override):
     """把 override 递归合并进 base（就地修改 base），返回 base。"""
     for key, value in override.items():
@@ -92,25 +138,42 @@ def load_config(path=None):
     加载配置：默认配置 + 配置文件内容做深合并。
     文件不存在时自动生成默认配置，并提示用户填写账号密码。
     """
-    config_path = path or get_config_path()
+    config_path = resolve_path(path)
     config = copy.deepcopy(DEFAULT_CONFIG)
 
     if os.path.exists(config_path):
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8-sig") as f:
                 user_cfg = json.load(f)
+            if not isinstance(user_cfg, dict):
+                raise ConfigError("配置文件最外层必须是 JSON 对象。")
             _deep_merge(config, user_cfg)
-        except (json.JSONDecodeError, OSError) as e:
-            print("[警告] 配置文件解析失败(%s)，使用默认配置。" % e)
+        except (json.JSONDecodeError, UnicodeError):
+            raise ConfigError("配置文件不是有效的 UTF-8 JSON，请检查格式：%s" % config_path) from None
+        except OSError:
+            raise ConfigError("无法读取配置文件：%s" % config_path) from None
     else:
         save_config(config_path, config)
         print("[提示] 已生成默认配置文件：%s，请填写账号密码。" % config_path)
-    return config
+    return validate_config(config)
 
 
 def save_config(path, config):
     """把配置以 JSON 形式（缩进 2 空格、UTF-8）写入指定路径。"""
-    config_path = path or get_config_path()
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, ensure_ascii=False, indent=2)
+    validate_config(config)
+    config_path = resolve_path(path)
+    temporary_path = None
+    try:
+        directory = os.path.dirname(config_path)
+        os.makedirs(directory, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
+                                         prefix=".config-", suffix=".tmp", delete=False) as f:
+            temporary_path = f.name
+            json.dump(config, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(temporary_path, config_path)
+    except OSError:
+        raise ConfigError("无法保存配置文件：%s" % config_path) from None
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
