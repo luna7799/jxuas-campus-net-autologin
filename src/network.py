@@ -9,6 +9,8 @@ network.py —— 网络检测与 WiFi 连接模块
 """
 import socket
 import subprocess
+import time
+from urllib.parse import urlsplit
 
 import requests
 
@@ -23,8 +25,8 @@ HEADERS = {
 
 
 def _decode(data):
-    """把子进程输出解码为文本（Windows 中文环境优先 GBK）。"""
-    for enc in ("gbk", "utf-8", "mbcs", "latin-1"):
+    """兼容 UTF-8 和 Windows 当前代码页的子进程输出。"""
+    for enc in ("utf-8", "mbcs", "gbk", "latin-1"):
         try:
             return data.decode(enc)
         except (UnicodeDecodeError, AttributeError):
@@ -35,8 +37,9 @@ def _decode(data):
 def _run(cmd, timeout=10):
     """执行命令并返回 CompletedProcess，失败返回 None。"""
     try:
-        return subprocess.run(cmd, capture_output=True, timeout=timeout)
-    except Exception:
+        return subprocess.run(cmd, capture_output=True, timeout=timeout,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError):
         return None
 
 
@@ -48,26 +51,31 @@ def get_current_ssid():
     out = _decode(result.stdout)
     for line in out.splitlines():
         # 输出形如 "    SSID : JXUAS"（中英文环境均是 "SSID : 名称"）
-        if "SSID" in line and ":" in line:
-            return line.split(":", 1)[1].strip()
+        key, separator, value = line.partition(":")
+        if separator and key.strip() == "SSID":
+            return value.strip() or None
     return None
 
 
-def connect_wifi(ssid, backup=None):
+def connect_wifi(ssid, backup=None, timeout=15):
     """
     尝试连接主 SSID，失败则尝试备用 SSID。
     注意：Windows 只能连接「已保存过密码」的无线网络，请先手动连过一次。
     """
     current = get_current_ssid()
-    for name in (ssid, backup):
+    candidates = list(dict.fromkeys(name for name in (ssid, backup) if name))
+    for name in candidates:
         if name and current == name:
             return True
-    for name in (ssid, backup):
-        if not name:
-            continue
+    for name in candidates:
         result = _run(["netsh", "wlan", "connect", "name=%s" % name], timeout=15)
         if result is not None and result.returncode == 0:
-            return True
+            # 命令成功仅代表请求被接受；实际连接成功后才返回。
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if get_current_ssid() == name:
+                    return True
+                time.sleep(min(0.5, max(0, deadline - time.monotonic())))
     return False
 
 
@@ -94,14 +102,14 @@ def is_authenticated(test_url):
 
 
 def can_reach_portal(portal_url):
-    """探测认证门户的 TCP 80 端口是否可达。"""
-    host = portal_url
-    if "://" in host:
-        host = host.split("://", 1)[1]
-    host = host.split("/", 1)[0].split(":")[0]
+    """按 URL 的协议和显式端口探测门户，支持 HTTPS 和 IPv6。"""
     try:
-        sock = socket.create_connection((host, 80), timeout=4)
-        sock.close()
+        parsed = urlsplit(portal_url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        with socket.create_connection((parsed.hostname, port), timeout=4):
+            pass
         return True
-    except OSError:
+    except (OSError, ValueError):
         return False

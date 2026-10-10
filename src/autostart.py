@@ -9,6 +9,7 @@ autostart.py —— 开机自启动模块（Windows）
 """
 import os
 import sys
+import subprocess
 import winreg
 
 # 注册表位置：当前用户的开机启动项
@@ -17,23 +18,28 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APP_NAME = "JXUAS_AutoLogin"
 
 
-def _target_command():
+def _target_command(config_path=None, headless=False):
     """
     返回开机时需要执行的命令行：
     - 打包为 exe 时：直接指向 exe 本体；
     - 源码运行时：指向 python 解释器 + main.py 脚本。
     """
     if getattr(sys, "frozen", False):
-        return '"%s"' % sys.executable
-    python = sys.executable
-    script = os.path.abspath(os.path.join(os.path.dirname(__file__), "main.py"))
-    return '"%s" "%s"' % (python, script)
+        arguments = [sys.executable]
+    else:
+        script = os.path.abspath(os.path.join(os.path.dirname(__file__), "main.py"))
+        arguments = [sys.executable, script]
+    if config_path:
+        arguments.extend(["--config", os.path.abspath(os.path.expanduser(config_path))])
+    if headless:
+        arguments.append("--headless")
+    return subprocess.list2cmdline(arguments)
 
 
-def install():
+def install(config_path=None, headless=False):
     """注册开机自启动，返回是否成功。"""
     try:
-        command = _target_command()
+        command = _target_command(config_path, headless)
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
             winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, command)
         return True

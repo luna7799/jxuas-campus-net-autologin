@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 title JXUAS 校园网自动连接 - 一键打包脚本
-setlocal
+setlocal EnableExtensions
 cd /d "%~dp0"
 
 echo ==========================================
@@ -9,33 +9,41 @@ echo   JXUAS 校园网自动连接 - 一键打包
 echo ==========================================
 echo.
 
-where python >nul 2>nul
-if errorlevel 1 (
-    echo [错误] 未检测到 Python，请先安装 Python 3.8+ 并勾选 "Add to PATH"。
-    pause
-    exit /b 1
+set "BUILD_PYTHON=.venv\Scripts\python.exe"
+if not exist "%BUILD_PYTHON%" (
+    python -m venv .venv
+    if errorlevel 1 goto failed
 )
 
-echo [1/4] 创建虚拟环境 .venv ...
-python -m venv .venv
-call ".venv\Scripts\activate.bat"
+echo [1/4] 安装打包依赖...
+"%BUILD_PYTHON%" -m pip install -r requirements-build.txt
+if errorlevel 1 goto failed
 
-echo [2/4] 安装依赖（selenium / requests / pyinstaller）...
-python -m pip install --upgrade pip >nul
-pip install -r requirements.txt pyinstaller
+echo [2/4] 运行回归测试...
+"%BUILD_PYTHON%" -m unittest discover -s tests -v
+if errorlevel 1 goto failed
 
-echo [3/4] 打包为单文件 exe ...
-pyinstaller --noconfirm --clean --onefile --name jxuas-autologin --console src\main.py
+echo [3/4] 打包程序和 Selenium Manager...
+"%BUILD_PYTHON%" -m PyInstaller --noconfirm --clean --onefile --name jxuas-autologin --console --paths src --collect-all selenium src\main.py
+if errorlevel 1 goto failed
 
-echo [4/4] 复制配置文件到输出目录 ...
-if not exist "dist\config" mkdir "dist\config"
-copy /y "config\config.json" "dist\config\config.json" >nul
-copy /y "config\config.example.json" "dist\config\config.example.json" >nul
+echo [4/4] 生成不含个人账号的发布配置...
+"%BUILD_PYTHON%" scripts\prepare_release.py dist
+if errorlevel 1 goto failed
+
+"%BUILD_PYTHON%" scripts\check_package.py dist
+if errorlevel 1 goto failed
 
 echo.
 echo 打包完成！
 echo   输出文件：dist\jxuas-autologin.exe
 echo   配置文件：dist\config\config.json
+echo 发布配置已重置为空账号；本机 config\config.json 保持不变。
 echo.
-pause
-endlocal
+if /i not "%~1"=="--no-pause" pause
+exit /b 0
+
+:failed
+echo [错误] 打包失败，已停止。请查看上方错误提示。
+if /i not "%~1"=="--no-pause" pause
+exit /b 1
