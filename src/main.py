@@ -34,6 +34,13 @@ class RunResult(IntEnum):
     MANUAL_ACTION = 4
 
 
+def configure_console():
+    """确保中文提示在英文 Windows 和重定向输出中也能正常显示。"""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         prog="jxuas-autologin",
@@ -208,6 +215,7 @@ def main():
 
 
 if __name__ == "__main__":
+    configure_console()
     try:
         sys.exit(main())
     except KeyboardInterrupt:

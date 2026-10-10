@@ -210,6 +210,16 @@ class AuthenticationTests(unittest.TestCase):
 
 
 class MainTests(unittest.TestCase):
+    def test_cli_help_works_with_english_windows_output_encoding(self):
+        env = dict(os.environ, PYTHONIOENCODING="cp1252")
+        result = subprocess.run([sys.executable, str(ROOT / "src" / "main.py"), "--help"],
+                                env=env, capture_output=True, timeout=30,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = result.stdout.decode("utf-8")
+        self.assertIn("校园网", text)
+        self.assertIn("--prepare-driver", text)
+
     def test_prepare_driver_runs_while_already_online(self):
         with patch.object(sys, "argv", ["main.py", "--prepare-driver"]), \
              patch.object(config, "load_config", return_value=configured()), \
